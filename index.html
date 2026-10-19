@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>বি ক্লাস স্টেশন সেম্যুলেটর</title>
+    <title>বি ক্লাস স্টেশন ট্রেন সেম্যুলেটর</title>
     <style>
         * { box-sizing: border-box; user-select: none; -webkit-tap-highlight-color: transparent; }
         body { margin: 0; padding: 0; background-color: #2c3e50; font-family: Arial, sans-serif; overflow: hidden; width: 100vw; height: 100vh; display: flex; flex-direction: column; }
@@ -120,6 +120,9 @@
             <button class="info-btn" onclick="openInfo('lineClear')">Condition Of Line Clear</button>
             <button class="info-btn" onclick="openInfo('homeLower')">Condition Of Home Signal Lower</button>
             <button class="info-btn" onclick="openInfo('developer')">Developer</button>
+        </div>
+        <div class="controls" style="margin-top:5px;">
+            <button class="info-btn" onclick="openInfo('rules')">Rules</button>
         </div>
     </div>
 
@@ -1391,6 +1394,19 @@
                     '(৪) কনফ্লিক্টিং সিগনাল বা সংশয় সূষ্টিকারী সিগনাল সমূহ বিপদ জ্ঞাপক অবস্থায় আনা হয়েছে।',
                     '(৫) যে লাইনে ট্রেনটি গ্রহন করা হবে ঐ লাইনটির ষ্টার্টার সিগনাল পর্যন্ত, যদি ষ্টার্টার সিগনাল না থাকে তবে সাধারনত যেখানে এসে ট্রেন দাঁড়ায় সে পর্যন্ত এবং তার সম্মুখে ২০০ গজ বা ১৮৩ মিটার পর্যন্ত বাধামুক্ত থাকতে হবে।',
                     '(৬) ষ্টেশন সীমার মধ্যে কোন লেবেল ক্রসিং গেট থাকলে তা বন্ধ করতে হবে। জি আর ৩১'
+                ]
+            },
+            rules: {
+                title: 'Rules',
+                lines: [
+                    'নিয়মাবলি:-',
+                    '➤এই সেম্যুলেটরে বেশিরভাগ কমান্ড সিগনাল বাটনে ইনক্লুড করা হয়েছে।',
+                    '➤হোম সিগনাল বাটনে- মেইন লাইনে ট্রেন গ্রহনের বা এপ্রোচিং সিগনাল দেওয়ার বাটন আছে, লুপ ১ \\ সেট করার অপশন, লুপ ১ এ সিগনাল দেওয়ার অপশন।',
+                    '➤মেইন লাইনে স্টার্টার সিগনাল বাটনে স্টার্টার সিগনাল দেওয়ার অপশন।',
+                    '➤এডভান্স স্টার্টার সিগনাল বাটনে এই সিগনাল দেওয়ার অপশন। যদিও বা উপরে ব্লক বাটন LCR এপ্রুভ না হলে এডভান্স স্টার্টার সিগনাল হবেনা।',
+                    '➤লুপ লাইনে ট্রেন প্রবেশ করে থামলে, লুপ স্টার্টার সিগনাল বাটন এ ক্লিক করে প্রথমে লুপ ২ লাইন বানাতে হবে। এরপর উপরে LCR বাটন দ্বারা লাইন ক্লিয়ার নিতে হবে। তারপর লুপ স্টার্টার সিগনাল বাটনে ক্লিক করে লুপ ২ সিগনাল বাটন দ্বারা স্টার্টার সিগনাল এবং এডভান্স স্টার্টার সিগনাল বাটন এ ক্লিক করে এডভান্স স্টার্টার সিগনাল দিতে হবে।',
+                    '➤ট্রেন মেইন লাইনে চালান অথবা লুপ লাইনে। সমস্ত প্রক্রিয়া শেষ করে \'রান ট্রেন\' বাটনে ক্লিক করবেন। এতে একটা ট্রেন চলতে দেখবেন।',
+                    'ধন্যবাদ।'
                 ]
             },
             developer: {
