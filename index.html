@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>বি ক্লাস স্টেশন ট্রেন সেম্যুলেটর</title>
+    <title>B Class Single Line Station Simulator</title>
     <style>
         * { box-sizing: border-box; user-select: none; -webkit-tap-highlight-color: transparent; }
         body { margin: 0; padding: 0; background-color: #2c3e50; font-family: Arial, sans-serif; overflow: hidden; width: 100vw; height: 100vh; display: flex; flex-direction: column; }
@@ -96,6 +96,11 @@
         .btn-main { background-color: #007bff; }
         .perm-hidden { display: none !important; }
         button.info-btn { background-color: #17a2b8; }
+        button.dir-btn { background-color: #34495e; }
+        button.dir-btn.active { background-color: #28a745; box-shadow: 0 0 0 2px #155724; }
+        .floating-panel.left-panel { right: auto; left: 20px; }
+        .floating-panel.inactive { opacity: 0.4; pointer-events: none; }
+        #arrowDisplayL { display: inline-block; transform: scaleX(-1); }
         .info-box { background: white; padding: 18px 16px; border-radius: 10px; width: 90%; max-width: 480px;
             max-height: 85vh; display: flex; flex-direction: column; box-shadow: 0 5px 15px rgba(0,0,0,0.3); }
         .info-box h3 { margin: 0 0 10px 0; font-size: 16px; color: #0a5c66; text-align: center; }
@@ -110,6 +115,8 @@
     <div class="header">
         <h2>B Class Single Line Station Diagram</h2>
         <div class="controls">
+            <button id="btnUp" class="dir-btn active" onclick="setDirection('up')">Up Train</button>
+            <button id="btnDown" class="dir-btn" onclick="setDirection('down')">Down Train</button>
             <button id="btnTrain" class="train-btn">Run Train</button>
             <button id="btnMainHome" class="secondary" style="display:none;">Home Signal</button>
             <button id="btnStarter" class="secondary" style="display:none;">Starter</button>
@@ -117,11 +124,13 @@
             <button id="btnLoopSignal" class="secondary perm-hidden">Loop Signal</button>
             <button id="btnLoopSignal2" class="secondary perm-hidden">Loop Signal 2</button>
             <button id="btnReset" class="reset-btn">Reset</button>
+        </div>
+        <div class="controls">
             <button class="info-btn" onclick="openInfo('lineClear')">Condition Of Line Clear</button>
             <button class="info-btn" onclick="openInfo('homeLower')">Condition Of Home Signal Lower</button>
-            <button class="info-btn" onclick="openInfo('developer')">Developer</button>
         </div>
-        <div class="controls" style="margin-top:5px;">
+        <div class="controls">
+            <button class="info-btn" onclick="openInfo('developer')">Developer</button>
             <button class="info-btn" onclick="openInfo('rules')">Rules</button>
         </div>
     </div>
@@ -129,7 +138,27 @@
     <div class="diagram-wrapper" id="diagramWrapper">
         <canvas id="railCanvas"></canvas>
         
-        <!-- Floating Panel -->
+        <!-- Floating Panel for DOWN trains (left side, arrow points left) -->
+        <div class="floating-panel left-panel inactive" id="floatingPanelL">
+            <div class="top-panel-item" style="margin-right: 5px;">
+                <span>&nbsp;</span>
+                <div class="arrow-display" id="arrowDisplayL">➔</div>
+            </div>
+            <div class="top-panel-item">
+                <span>CA</span>
+                <div class="circle-btn" onclick="alert('CA Button Clicked')">CA</div>
+            </div>
+            <div class="top-panel-item">
+                <span>LCR</span>
+                <div class="circle-btn" id="btnLCR_L" onclick="openLCRModal()">LCR</div>
+            </div>
+            <div class="top-panel-item">
+                <span>BCB</span>
+                <div class="circle-btn" onclick="cancelArrow()">BCB</div>
+            </div>
+        </div>
+
+        <!-- Floating Panel for UP trains (right side) -->
         <div class="floating-panel" id="floatingPanel">
             <div class="top-panel-item">
                 <span>CA</span>
@@ -253,10 +282,16 @@
         const ctx = canvas.getContext('2d');
         const wrapper = document.getElementById('diagramWrapper');
         const floatingPanel = document.getElementById('floatingPanel');
-        const arrowDisplay = document.getElementById('arrowDisplay');
-        const btnLCR = document.getElementById('btnLCR');
+        const floatingPanelL = document.getElementById('floatingPanelL');
+        // Up trains use the right panel, Down trains the left panel; arrowDisplay / btnLCR point at the active one
+        const arrowDisplayR = document.getElementById('arrowDisplay'), arrowDisplayL = document.getElementById('arrowDisplayL');
+        const btnLCR_R = document.getElementById('btnLCR'), btnLCR_L = document.getElementById('btnLCR_L');
+        let arrowDisplay = arrowDisplayR;
+        let btnLCR = btnLCR_R;
+        let DIR = 'up';     // 'up' = train comes from the left, 'down' = train comes from the right
         const btnMainHome = document.getElementById('btnMainHome');
         const btnTrain = document.getElementById('btnTrain');
+        const btnUp = document.getElementById('btnUp'), btnDown = document.getElementById('btnDown');
         const btnLoopSignal2 = document.getElementById('btnLoopSignal2');
 
         let scale = 1, translateX = 0, translateY = 0;
@@ -281,13 +316,17 @@
         }
 
         // Coordinates mapping (percent of canvas width) - single source of truth
+        // The line before the Up Outer signal and after the Down Outer signal have the same length (LAYOUT_MARGIN % of the width).
+        // The positions below were designed for 15%..95.5%; mapX squeezes that span into LAYOUT_MARGIN..(100-LAYOUT_MARGIN).
+        const LAYOUT_MARGIN = 10;
+        const mapX = (p) => LAYOUT_MARGIN + (p - 15) * (100 - 2 * LAYOUT_MARGIN) / 80.5;
         const coords = {
             lines: { mainTrackY: 50 },
             signals: {
-                'YRYG_Outer': { x: 15, y: 20, label: 'Outer', bulbs: 4 },
-                'RYG_Home': { x: 32, y: 20, label: 'Home', bulbs: 3 },
-                'RY_Starter': { x: 60, y: 20, label: 'Starter', bulbs: 3 },
-                'YR_Adv': { x: 80, y: 20, label: 'AdvStr', bulbs: 2 }
+                'YRYG_Outer': { x: mapX(15), y: 20, label: 'Outer', bulbs: 4 },
+                'RYG_Home': { x: mapX(32), y: 20, label: 'Home', bulbs: 3 },
+                'RY_Starter': { x: mapX(60), y: 20, label: 'Starter', bulbs: 3 },
+                'YR_Adv': { x: mapX(80), y: 20, label: 'AdvStr', bulbs: 2 }
             }
         };
 
@@ -295,26 +334,26 @@
         const LOOP_JOINT_ANGLE = 115;  // degrees, where the side lines join the loop line
         const LOOP_GAP_PX = 85;        // distance of the loop line below the main track
         const LOOP_MARGIN_PCT = 3;     // clearance from Home / Adv. Starter signals (% of width)
-        const LOOP_START_PCT = 27;     // loop line starts here (left of the "\" joint)
-        const LOOP_END_PCT = 88;       // loop line ends here (right of the "/" joint)
+        const LOOP_START_PCT = mapX(27);     // loop line starts here (left of the "\" joint)
+        const LOOP_END_PCT = 100 - mapX(27);       // loop line ends here (right of the "/" joint)
         const FLASH_MS = 5000;         // a side line flashes this long, then stays steady
         const loop1 = {
             signals: {
                 // xPct = position on the loop line, % of canvas width (between the two joints)
-                'L1_Adv':     { fromJR: 30, label: 'STR', bulbs: 2 }   // fromJR = px left of the Loop 2 ("/") joint
+                'L1_Adv':     { fromJR: 16, label: 'STR', bulbs: 2 }   // fromJR = px between the loop joint and the loop starter signal (same for Up and Down)
             }
         };
 
-        function getLoopGeometry(w, h) {
-            const { homeX, advX } = getPositions(w);
+        function getLoopGeometryPhys(w, h) {
+            const PP = getPhysPositions(w);
             const trackY = h * coords.lines.mainTrackY / 100;
             const S = uiScale(w, h);
             const gap = LOOP_GAP_PX * S;                              // loop line distance below the main line
             const loopY = trackY + gap;
             const rad = LOOP_JOINT_ANGLE * Math.PI / 180;
             const dx = -gap * Math.cos(rad) / Math.sin(rad); // horizontal run of a side line
-            const topL = homeX + w * LOOP_MARGIN_PCT / 100;          // where "\" leaves the main track
-            const topR = advX - w * LOOP_MARGIN_PCT / 100;           // where "/" rejoins the main track
+            const topL = PP.up.homeX + w * LOOP_MARGIN_PCT / 100;          // where "\" leaves the main track
+            const topR = PP.down.homeX - w * LOOP_MARGIN_PCT / 100;           // where "/" rejoins the main track
             return {
                 trackY, loopY, gap, topL, topR,
                 strX: topR - dx - loop1.signals['L1_Adv'].fromJR * S,   // loop STR signal position
@@ -322,6 +361,19 @@
                 jR: topR - dx,                 // where "/" meets the loop line
                 ls: w * LOOP_START_PCT / 100,  // loop line left end
                 le: w * LOOP_END_PCT / 100     // loop line right end
+            };
+        }
+
+        // The loop is one fixed piece of track; for a Down train it is seen mirrored (travel space)
+        function getLoopGeometry(w, h) {
+            const p = getLoopGeometryPhys(w, h);
+            if (DIR !== 'down') return p;
+            const S = uiScale(w, h);
+            return {
+                trackY: p.trackY, loopY: p.loopY, gap: p.gap,
+                topL: w - p.topR, topR: w - p.topL, jL: w - p.jR, jR: w - p.jL,
+                ls: w - p.le, le: w - p.ls,
+                strX: (w - p.jL) - DOWN_STR_FROM_JOINT * S
             };
         }
 
@@ -357,13 +409,28 @@
             if (state.loop.left === 'flash' || state.loop.right === 'flash') drawDiagram();
         }, 200);
 
+        const DOWN_STR_FROM_JOINT = loop1.signals['L1_Adv'].fromJR;   // Up and Down: the loop starter signal stands the same distance from its joint
+
+        // Where the signals of both directions really stand on the screen.
+        // The left half (from the left: Up Outer, Down Adv. Starter, Up Home, Down Starter) is mirrored to the right half
+        // (from the right: Down Outer, Up Adv. Starter, Down Home, Up Starter), so both sides have the same order and spacing.
+        function getPhysPositions(w) {
+            const M = LAYOUT_MARGIN;
+            const home = mapX(32), starter = mapX(42);
+            const adv = M + (home - M) * 0.39;              // the Down Adv. Starter stands at the left end of the Station Section
+            const px = (pct) => w * pct / 100;
+            const up = { outerX: px(M), homeX: px(home), starterX: px(100 - starter), advX: px(100 - adv) };
+            const down = { outerX: px(100 - M), homeX: px(100 - home), starterX: px(starter), advX: px(adv) };
+            return { up, down };
+        }
+
+        // Positions in "travel space": x always grows in the direction the train runs.
+        // For a Down train the picture is simply mirrored, so one set of train logic serves both directions.
         function getPositions(w) {
-            return {
-                outerX: w * coords.signals['YRYG_Outer'].x / 100,
-                homeX: w * coords.signals['RYG_Home'].x / 100,
-                starterX: w * coords.signals['RY_Starter'].x / 100,
-                advX: w * coords.signals['YR_Adv'].x / 100
-            };
+            const P = getPhysPositions(w);
+            if (DIR === 'up') return P.up;
+            const d = P.down;
+            return { outerX: w - d.outerX, homeX: w - d.homeX, starterX: w - d.starterX, advX: w - d.advX };
         }
 
         // --- Audio Setup ---
@@ -446,9 +513,12 @@
         }
 
         function submitSecretNumber() {
-            const inputVal = document.getElementById('secretNumberInput').value.trim();
-            
-            if (/^\d{2}$/.test(inputVal) && inputVal !== '00') {
+            // Bengali digits are accepted too
+            const inputVal = document.getElementById('secretNumberInput').value.trim()
+                .replace(/[০-৯]/g, ch => String(ch.charCodeAt(0) - 0x09E6));
+
+            // two digits, and neither of them may be 0 (not 02, 20, 30, 09 ...)
+            if (/^[1-9]{2}$/.test(inputVal)) {
                 state.isLCRUnlocked = true;
                 btnLCR.classList.add('active');
                 closeLCRModal();
@@ -456,7 +526,7 @@
                 arrowDisplay.classList.add('arrow-flashing');
                 arrowDisplay.style.color = '#555'; 
             } else {
-                alert("দয়া করে ০ বাদে যেকোনো ২টি সংখ্যা দিন (যেমন: ১২, ২৫, ৭৮)");
+                alert("২ অংকের সংখ্যা দিন, ডানে বা বামে ০ থাকা চলবে না (০২, ২০, ৩০, ০৯ হবে না)। যেমন: ১২, ২৫, ৭৮");
             }
         }
 
@@ -616,7 +686,7 @@
                 state.train.soundPlayed = true;
             }
 
-            const w = canvas.width, h = canvas.height;
+            const w = CW, h = CH;
             const { outerX, homeX } = getPositions(w);
             const L = getLoopGeometry(w, h);
             const strX = getLoopGeometry(w, h).strX;
@@ -711,7 +781,7 @@
                 state.train.soundPlayed = true;
             }
 
-            const w = canvas.width;
+            const w = CW;
             const { outerX, homeX, starterX, advX } = getPositions(w);
 
             // Engine front (right edge) position
@@ -797,13 +867,17 @@
         }
 
         // --- Drawing Logic ---
+        let CW = 300, CH = 300, HD = 2;
         function resizeCanvas() {
             // The header can wrap onto several rows: keep the diagram just below it
             const hdr = document.querySelector('.header');
             if (hdr) document.getElementById('diagramWrapper').style.marginTop = hdr.offsetHeight + 'px';
             const container = document.getElementById('diagramWrapper');
-            canvas.width = container.clientWidth;
-            canvas.height = container.clientHeight;
+            // Sharp (HD) drawing: the bitmap is bigger than the CSS size; all drawing code keeps using CSS pixels (CW x CH)
+            CW = container.clientWidth; CH = container.clientHeight;
+            HD = Math.min(3, Math.max(2, window.devicePixelRatio || 1));   // at least 2x so pinch-zoom stays sharp
+            canvas.width = Math.round(CW * HD);
+            canvas.height = Math.round(CH * HD);
             drawDiagram();
         }
 
@@ -840,15 +914,21 @@
         }
 
         function drawDiagram() {
-            const w = canvas.width;
-            const h = canvas.height;
+            const w = CW;
+            const h = CH;
+            ctx.setTransform(HD, 0, 0, HD, 0, 0);
             ctx.clearRect(0, 0, w, h);
             signalHits.length = 0;
             UI = uiScale(w, h);
             updateRunButton();
 
             const trackY = h * coords.lines.mainTrackY / 100;
-            
+
+            // Track, lines and loop are drawn in "travel space": for a Down train the whole track is mirrored
+            // (text, signals and notes are drawn afterwards, un-mirrored, at their real screen positions)
+            ctx.save();
+            if (DIR === 'down') { ctx.translate(w, 0); ctx.scale(-1, 1); }
+
             ctx.beginPath(); ctx.strokeStyle = '#333'; ctx.lineWidth = 4; ctx.moveTo(0, trackY); ctx.lineTo(w, trackY); ctx.stroke();
 
             const { outerX, homeX, starterX, advX } = getPositions(w);
@@ -967,35 +1047,53 @@
             const brk = 12 * UI;
             if (state.loop.left !== 'off') ctx.clearRect(L.topL + 3, trackY - 5, brk, 10);
             if (state.loop.right !== 'off') ctx.clearRect(L.topR - 3 - brk, trackY - 5, brk, 10);
+            ctx.restore();
 
-            // Loop signals (same size as the Adv. Starter signal, default red).
-            // The post is 24px tall and its foot sits exactly on the loop line.
-            for (const [key, sig] of Object.entries(loop1.signals)) {
-                drawSignal(L.strX, L.loopY + 16 * UI, sig.bulbs, state.signals[key].state, sig.label, w, 24, 'YR');
-            }
-
-            for (const [key, sig] of Object.entries(coords.signals)) {
-                drawSignal(w * sig.x / 100, trackY - 15 * UI, sig.bulbs, state.signals[key].state, sig.label, w);
+            // ---- Signals of both directions at their real screen positions ----
+            // The set of the selected direction shows the real signal states, the other set stays red.
+            const P = getPhysPositions(w);
+            const Lp = getLoopGeometryPhys(w, h);
+            const fromJR = loop1.signals['L1_Adv'].fromJR * UI;
+            const strPhys = { up: Lp.jR - fromJR, down: Lp.jL + DOWN_STR_FROM_JOINT * UI };   // loop starter signal of each direction
+            for (const set of ['up', 'down']) {
+                const on = (set === DIR);
+                // loop STR signal of the selected direction only (post 24px tall, foot on the loop line)
+                if (on) drawSignal(strPhys[set], Lp.loopY + 16 * UI, 2, state.signals['L1_Adv'].state, 'STR', w, 24, 'YR', set);
+                for (const [key, sig] of Object.entries(coords.signals)) {
+                    const pk = { 'YRYG_Outer': 'outerX', 'RYG_Home': 'homeX', 'RY_Starter': 'starterX', 'YR_Adv': 'advX' }[key];
+                    // Up signals: post reaches 15px below the line; Down signals: post ends on the line
+                    drawSignal(P[set][pk], trackY - 15 * UI, sig.bulbs, on ? state.signals[key].state : 0, sig.label, w, (key === 'RYG_Home' || (set === 'up' && key === 'YRYG_Outer')) ? 70 : 55, undefined, set);
+                }
             }
 
             // --- Notes on the diagram ---
-            // Block overlap: Outer -> Home (below the main line)
-            const boMid = (outerX + homeX) / 2, boW = homeX - outerX - 8;
-            drawDoubleArrow(outerX + 4, homeX - 4, trackY + 10 * UI);
-            drawNote('440 Yard', boMid, trackY + 24 * UI, 11 * UI, true, boW);
-            drawNote('Block Overlap', boMid, trackY + 35 * UI, 9 * UI, false, boW);
+            const U = P.up, D = P.down;
+            // Block overlap: Outer -> Home (below the main line)  - Up (left) and Down (right)
+            const blockOverlap = (xa, xb) => {
+                const mid = (xa + xb) / 2, bw = Math.abs(xb - xa) - 8;
+                drawDoubleArrow(Math.min(xa, xb) + 4, Math.max(xa, xb) - 4, trackY + 10 * UI);
+                drawNote('440 Yard', mid, trackY + 24 * UI, 11 * UI, true, bw);
+                drawNote('Block Overlap', mid, trackY + 35 * UI, 9 * UI, false, bw);
+            };
+            blockOverlap(U.outerX, U.homeX);
+            blockOverlap(D.homeX, D.outerX);
 
-            // Signal overlap: Starter -> Adv. Starter (above the main line, between the two signals)
-            const soMid = (starterX + advX) / 2, soW = advX - starterX - 24 * UI;
-            drawDoubleArrow(starterX + 11 * UI, advX - 11 * UI, trackY - 38 * UI);
-            drawNote('200 Yard', soMid, trackY - 46 * UI, 11 * UI, true, soW);
-            drawNote('Signal Overlap', soMid, trackY - 58 * UI, 9 * UI, false, soW);
+            // Signal overlap: Starter -> Adv. Starter (above the main line)
+            const signalOverlap = (xa, xb, yArrow) => {
+                const mid = (xa + xb) / 2, sw = Math.abs(xb - xa) - 24 * UI;
+                drawDoubleArrow(Math.min(xa, xb) + 11 * UI, Math.max(xa, xb) - 11 * UI, yArrow);
+                drawNote('200 Yard', mid, yArrow - 8 * UI, 11 * UI, true, sw);
+                drawNote('Signal Overlap', mid, yArrow - 20 * UI, 9 * UI, false, sw);
+            };
+            // Down Home stands between the Up Starter and Up Adv. Starter, so this note also sits above all signal heads
+            signalOverlap(U.starterX, U.advX, trackY - 112 * UI);
+            // The Up Home signal stands between the Down Adv. Starter and Down Starter: keep this note above all signal heads
+            signalOverlap(D.advX, D.starterX, trackY - 112 * UI);
 
             // Station Section / Station Limit brackets (below the loop line)
             {
                 const limBottom = Math.min(L.loopY + 54 * UI, h - 8);
                 const secBottom = Math.min(L.loopY + 27 * UI, limBottom - 22 * UI);
-                const secLeft = outerX + (homeX - outerX) * 0.39;
                 const bracket = (xl, yl, xr, yr, yb, label) => {
                     const fs = 11 * UI;
                     ctx.font = 'bold ' + fs + 'px Arial';
@@ -1011,13 +1109,16 @@
                     ctx.fillText(label, mid, yb);
                     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
                 };
-                // Station Section: from just before the Home signal to the Adv. Starter
-                bracket(secLeft, trackY + 43 * UI, advX, trackY + 27 * UI, secBottom, 'Station Section');
-                // Station Limit: from the Outer signal to the end of the loop line
-                bracket(outerX, trackY + 20 * UI, L.le, trackY + 8 * UI, limBottom, 'Station Limit');
+                // Station Section depends on the selected direction
+                if (DIR === 'up') bracket(U.homeX, trackY + 43 * UI, U.advX, trackY + 43 * UI, secBottom, 'Station Section');   // Up Home -> Up Adv. Starter
+                else bracket(D.advX, trackY + 43 * UI, D.homeX, trackY + 43 * UI, secBottom, 'Station Section');        // Down Adv. Starter -> Down Home
+                // Station Limit: Up Outer -> Down Outer
+                bracket(U.outerX, trackY + 20 * UI, D.outerX, trackY + 8 * UI, limBottom, 'Station Limit');
             }
 
             if (state.train.x > -100 && state.train.x - TRAIN_TAIL < w + 20) {
+                ctx.save();
+                if (DIR === 'down') { ctx.translate(w, 0); ctx.scale(-1, 1); }   // Down train: runs right -> left
                 // The track as a path measured by arc length (main line -> "\" -> loop line -> "/" -> main line),
                 // so the engine and the coaches keep a constant spacing around the bends and stay coupled.
                 const lenB = Math.hypot(L.jL - L.topL, L.loopY - trackY);
@@ -1061,13 +1162,14 @@
                 ctx.save(); ctx.translate(pe.cx, pe.cy); ctx.rotate(pe.ang);
                 drawTrain(-ENGINE_WIDTH / 2, 0);
                 ctx.restore();
+                ctx.restore();
             }
         }
 
         // layout = lamp colours from top to bottom: G green, Y yellow, R red
         //   Outer: G Y R Y | Home, Starter: G Y R | Adv. Starter: G R | Loop signal: Y R
         // activeState: 0 red, 1 yellow, 2/3 green, 4 double yellow (Outer)
-        function drawSignal(x, y, bulbs, activeState, label, w, postH = 70, layout = ({ 4: 'GYRY', 3: 'GYR', 2: 'GR' })[bulbs]) {
+        function drawSignal(x, y, bulbs, activeState, label, w, postH = 70, layout = ({ 4: 'GYRY', 3: 'GYR', 2: 'GR' })[bulbs], hitSet = 'up') {
             const bulbRadius = 5 * UI;
             const spacing = bulbRadius * 2.2;
             const boxWidth = bulbRadius * 2.8;
@@ -1129,7 +1231,7 @@
 
             // Clickable area: label + signal head + the post
             const hitTop = boxCenterY - boxHeight / 2 - 18 * UI;
-            signalHits.push({ label, x0: x - 24 * UI, x1: x + 24 * UI, y0: hitTop, y1: postBottom });
+            signalHits.push({ label, set: hitSet, x0: x - 24 * UI, x1: x + 24 * UI, y0: hitTop, y1: postBottom });
         }
 
         function drawTrain(x, y) {
@@ -1174,6 +1276,8 @@
             else if (t.hasStarted) ok = false;
             else ok = Object.values(state.signals).some(s => s.state !== 0);      // some signal has been given
             if (btnTrain.disabled !== !ok) btnTrain.disabled = !ok;
+            // the direction cannot be changed while a train is moving
+            btnUp.disabled = btnDown.disabled = !!t.active;
         }
 
         // BCB: cancels the line clear - the arrow stops flashing and resets
@@ -1266,6 +1370,23 @@
             
             drawDiagram();
         });
+
+        // Up train = comes from the left (Up signals + right LCR panel); Down train = comes from the right (Down signals + left LCR panel)
+        function setDirection(d) {
+            if (state.train.active || d === DIR) return;
+            resetSimulation(true);                      // clears the picture and the line clear of the old direction
+            for (const [a, b] of [[arrowDisplayR, btnLCR_R], [arrowDisplayL, btnLCR_L]]) {
+                a.classList.remove('arrow-flashing'); a.style.color = '#555'; b.classList.remove('active');
+            }
+            DIR = d;
+            arrowDisplay = (d === 'up') ? arrowDisplayR : arrowDisplayL;
+            btnLCR = (d === 'up') ? btnLCR_R : btnLCR_L;
+            floatingPanel.classList.toggle('inactive', d !== 'up');
+            floatingPanelL.classList.toggle('inactive', d !== 'down');
+            btnUp.classList.toggle('active', d === 'up');
+            btnDown.classList.toggle('active', d === 'down');
+            drawDiagram();
+        }
 
         function resetSimulation(resetArrow = true) {
             clearLoop();
@@ -1364,6 +1485,7 @@
         function applyTransform() {
             canvas.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scale})`;
             floatingPanel.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scale})`;
+            floatingPanelL.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scale})`;
         }
 
         window.addEventListener('resize', resizeCanvas);
@@ -1400,6 +1522,8 @@
                 title: 'Rules',
                 lines: [
                     'নিয়মাবলি:-',
+                    '➤উপরে \'Up Train\' বাটনে ক্লিক করলে ট্রেন বাম দিক থেকে আসবে (বাম দিকের সিগনাল ও ডান দিকের LCR প্যানেল কাজ করবে)। \'Down Train\' বাটনে ক্লিক করলে ট্রেন ডান দিক থেকে আসবে (ডান দিকের সিগনাল ও বাম দিকের LCR প্যানেল কাজ করবে)। দিক বদলালে সবকিছু রিসেট হয়ে যায়।',
+                    '➤LCR-এ ২ অংকের গোপন নাম্বার দিতে হবে। ডানে বা বামে ০ থাকা চলবে না (যেমন ০২, ২০, ৩০, ০৯ হবে না)।',
                     '➤এই সেম্যুলেটরে বেশিরভাগ কমান্ড সিগনাল বাটনে ইনক্লুড করা হয়েছে।',
                     '➤হোম সিগনাল বাটনে- মেইন লাইনে ট্রেন গ্রহনের বা এপ্রোচিং সিগনাল দেওয়ার বাটন আছে, লুপ ১ \\ সেট করার অপশন, লুপ ১ এ সিগনাল দেওয়ার অপশন।',
                     '➤মেইন লাইনে স্টার্টার সিগনাল বাটনে স্টার্টার সিগনাল দেওয়ার অপশন।',
@@ -1457,8 +1581,8 @@
 
         function signalAt(clientX, clientY) {
             const r = canvas.getBoundingClientRect();
-            const px = (clientX - r.left) * canvas.width / r.width;
-            const py = (clientY - r.top) * canvas.height / r.height;
+            const px = (clientX - r.left) * CW / r.width;
+            const py = (clientY - r.top) * CH / r.height;
             return signalHits.find(s => px >= s.x0 && px <= s.x1 && py >= s.y0 && py <= s.y1) || null;
         }
         function onSignalClicked(label) {
@@ -1496,7 +1620,14 @@
         canvas.addEventListener('pointerup', (e) => {
             if (Math.hypot(e.clientX - downX, e.clientY - downY) > 8) return;   // it was a drag / pinch
             const hit = signalAt(e.clientX, e.clientY);
-            if (hit && CLICKABLE.includes(hit.label)) onSignalClicked(hit.label);
+            if (!hit || !CLICKABLE.includes(hit.label)) return;
+            if (hit.set !== DIR) {
+                showMessage(DIR === 'up'
+                    ? 'এই সিগনাল ডাউন ট্রেনের। ডাউন ট্রেন চালাতে হলে আগে উপরে "Down Train" বাটনে ক্লিক করুন'
+                    : 'এই সিগনাল আপ ট্রেনের। আপ ট্রেন চালাতে হলে আগে উপরে "Up Train" বাটনে ক্লিক করুন');
+                return;
+            }
+            onSignalClicked(hit.label);
         });
         canvas.addEventListener('pointermove', (e) => {
             const hit = signalAt(e.clientX, e.clientY);
