@@ -997,7 +997,8 @@
                 const l = Math.max(gap, PP.up.outerX), r = Math.max(gap, CW - PP.down.outerX);
                 if (l + w + gap <= CW - r - w) { leftPx = l; rightPx = r; }
             }
-            const top = S > 1.05 ? Math.max(4, trackY - 160 * S - ph * sc) : 15;
+            // phones (tall, narrow canvas): panels sit right under the header; wide screens: just above the signal rows
+            const top = CW < 700 ? 8 : (S > 1.05 ? Math.max(4, trackY - 160 * S - ph * sc) : 15);
             for (const el of [floatingPanel, floatingPanelL]) {
                 el.style.top = top + 'px';
                 el.style.transform = sc !== 1 ? 'scale(' + sc + ')' : '';
